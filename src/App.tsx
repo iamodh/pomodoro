@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
 import { useRecoilState } from "recoil";
 import styled, { createGlobalStyle } from "styled-components";
-import { counterState } from "./atom";
+import { counterState, statsState } from "./atom";
+import { useEffect, useState } from "react";
+import { useSecondFormat } from "./utils";
 
 const GlobalStyles = createGlobalStyle`
   body {
@@ -76,8 +78,35 @@ const Button = styled(motion.div)`
   }
 `;
 
+const Counters = styled.div`
+  display: flex;
+  justify-content: space-between;
+  width: 40%;
+  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+`;
+
+const Counter = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`;
+
+const Value = styled.span`
+  opacity: 0.7;
+  font-size: 18px;
+  margin-bottom: 10px;
+  font-variant-numeric: tabular-nums;
+`;
+
+const Name = styled.span`
+  font-size: 14px;
+`;
+
 function App() {
   const [counter, setCounter] = useRecoilState(counterState);
+  const [minutes, seconds] = useSecondFormat(counter.value);
   const onPlayClick = () => {
     if (counter.running) {
       setCounter((current) => ({ ...current, running: false }));
@@ -85,17 +114,75 @@ function App() {
       setCounter((current) => ({ ...current, running: true }));
     }
   };
+
+  const [intervalId, setIntervalId] = useState<null | number>(null);
+  useEffect(() => {
+    if (counter.running) {
+      // decrease counter value by 1
+      if (intervalId === null) {
+        let timeout = setInterval(() => {
+          setCounter((current) => ({
+            ...current,
+            // no negative number
+            value: Math.max(current.value - 1, 0),
+          }));
+        }, 1000);
+        setIntervalId(Number(timeout));
+      }
+    } else {
+      // stop decreasing
+      if (intervalId !== null) {
+        setIntervalId(null);
+        clearInterval(intervalId);
+      }
+    }
+  }, [counter, setCounter, intervalId]); // include setters for the case
+
+  const [stats, setStats] = useRecoilState(statsState);
+  useEffect(() => {
+    if (counter.value === 0) {
+      //all rounds ended
+      if (intervalId !== null) {
+        setIntervalId(null);
+        clearInterval(intervalId);
+      }
+      if (stats.round === 4) {
+        setStats((current) => ({
+          ...current,
+          round: 1,
+          goal: current.goal + 1,
+        }));
+      }
+      // left rounds exsist
+      else {
+        setStats((current) => ({ ...current, round: current.round + 1 }));
+      }
+      // stop time and reset
+      setCounter((current) => ({ ...current, running: false, value: 5 }));
+    }
+  }, [counter, stats, intervalId, setCounter, setStats]); // include setters for the case
+
   return (
     <Wrapper>
       <GlobalStyles />
       <Title>Pomodoro</Title>
       <Numbers>
-        <ANumber variants={aNumberVariants} initial="start" animate="end">
-          25
+        <ANumber
+          variants={aNumberVariants}
+          initial="start"
+          animate="end"
+          key={`${minutes}-minutes`}
+        >
+          {minutes}
         </ANumber>
         <Divider>:</Divider>
-        <ANumber variants={aNumberVariants} initial="start" animate="end">
-          00
+        <ANumber
+          variants={aNumberVariants}
+          initial="start"
+          animate="end"
+          key={`${seconds}-seconds`}
+        >
+          {seconds}
         </ANumber>
       </Numbers>
       <Button
@@ -123,6 +210,16 @@ function App() {
           </svg>
         )}
       </Button>
+      <Counters>
+        <Counter>
+          <Value>{stats.round}/4</Value>
+          <Name>Round</Name>
+        </Counter>
+        <Counter>
+          <Value>{stats.goal}/12</Value>
+          <Name>Goal</Name>
+        </Counter>
+      </Counters>
     </Wrapper>
   );
 }
